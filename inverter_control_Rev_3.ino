@@ -1,4 +1,6 @@
 
+
+
 //**************************************************
 int is_fault();
 int is_run();
@@ -36,28 +38,40 @@ void delay_with_updates(long delay_value);
 
 // Pick just one Board
 //#define BRD_REV1 TRUE
-#define BRD_REV2 TRUE
-//#define BRD_REV3 TRUE
+//#define BRD_REV2 TRUE
+#define BRD_REV3 TRUE
 //
 #define DEBUG 1
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
+#ifdef BRD_REV4   // same as rev 3 for now
+#define USING_LCD 1
+#define RUN 3       // analog pin
+#define FAULT 0     // analog pin
+
+#define VDD 5.0    // Sshould be exact because of buck converter
+#define VPLUS 7     // analog pin
+#define CTLPIN 2    // digital pin
+#define LEDPIN 13    // digital
+#endif BRD_REV4
+
 #ifdef BRD_REV3
 #define USING_LCD 1
 #define RUN 3       // analog pin
 #define FAULT 0     // analog pin
-#define VDD 5.0
+//#define VDD 4.69  // when using USB - this needs to be measured
+#define VDD 4.91    // using LDO witih heat sink
 #define VPLUS 7     // analog pin
 #define CTLPIN 2    // digital pin
 #define LEDPIN 13    // digital
-#endif BRD_REV 3
+#endif BRD_REV3
 
 #ifdef BRD_REV2
 #define RUN 3       // analog pin
 #define FAULT 0     // analog pin
-#define VDD 5.0
+#define VDD 4.69  // when using USB - this needs to be measured
 #define VPLUS 5     // analog pin
 #define CTLPIN 2    // digital pin
 #define LEDPIN 13    // digital
@@ -67,13 +81,14 @@ void delay_with_updates(long delay_value);
 #define RUN 1
 #define FAULT 2
 #define VDD 5.0
-#define VPLUS 0
+#define VDD 4.69  // when using USB - this needs to be measured
 #define CTLPIN 2
 #define LEDPIN 13
 #endif BRD_REV1
 
+#define ARRAY_SIZE 100    // for averaging analog reads on battery
 #define RESTART_V 13.4
-#define SHUTDOWN_V 12.0
+#define SHUTDOWN_V 12.5     // was 12.0
 
 #define RUN_VOLTAGE 8
 #define FAULT_VOLTAGE 2
@@ -83,11 +98,13 @@ void delay_with_updates(long delay_value);
 #define STAT_RN  1   // running
 #define STAT_PS  4    // paused witing for load to reset
 
+
 #ifdef USING_LCD
 LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 chars and 2 line display
 
 
 #endif USING_LCD
+
 
 int stat = 5;             // holds status from last action
 #define BLINK_TIME  100
@@ -96,7 +113,7 @@ int stat = 5;             // holds status from last action
 float R1 = 1000000.0; // resistance of R1 (100K) -see text!
 float R2 = 100000.0; // resistance of R2 (10K) - see text!
 int value = 0;
-int restart_retries = 0;    // to check for motor 'lock' - need several minued to recover
+int restart_retries = 0;    // to check for motor 'lock' - need several minutes to recover
 
 void setup() {
 
@@ -154,7 +171,7 @@ void setup() {
   }
   digitalWrite(CTLPIN, HIGH);  // set pin high to 1, sw open
   show_status();
-  delay_with_updates(15000);
+  delay_with_updates(15000);    // let startup current spike settle down
 
 
 } // end of setup
@@ -266,10 +283,17 @@ int is_run() {
 
 float battery_voltage() {
   // read the value at analog input
-
+  int x;
+  long sum_of_reads;
   float vout = 0.0;
   float vin = 0.0;
-  value = analogRead(VPLUS);
+
+  sum_of_reads = 0;
+  for (x=0; x< ARRAY_SIZE; x++) {
+    sum_of_reads = sum_of_reads + analogRead(VPLUS);
+  }
+  value = sum_of_reads/ARRAY_SIZE;
+  
   vout = (value * VDD) / 1024.0; // see text
   vin = vout / (R2 / (R1 + R2));
   if (vin < 0.09) {
@@ -331,23 +355,24 @@ void show_status() {
   switch (stat) {
     case STAT_UV:
       lcd.setCursor(0, 0);
-      lcd.print ("UNV");
+      lcd.print ("UNV ");
       break;
 
     case STAT_RN:
       lcd.setCursor(0, 0);
-      lcd.print ("RUN");
+      lcd.print ("RUN ");
       break;
 
     case STAT_FL:
       lcd.setCursor(0, 3);
-      lcd.print ("FLT");
+      lcd.print ("FLT ");
       break;
 
     case STAT_PS:
       lcd.setCursor(0, 0);
-      lcd.print ("OVL");
+      lcd.print ("OVL ");
       break;
+      
     default:
       break;
   }
